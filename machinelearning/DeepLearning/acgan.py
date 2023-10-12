@@ -132,8 +132,8 @@ validate_every = 1
 print_every = 100
 
 
-if not os.path.exists(os.path.join(os.path.curdir, "../../Documents/school/Cmput328/Assignments/assignment9/visualize", "gan")):
-    os.makedirs(os.path.join(os.path.curdir, "../../Documents/school/Cmput328/Assignments/assignment9/visualize", "gan"))
+if not os.path.exists(os.path.join(os.path.curdir, "./visualize", "gan")):
+    os.makedirs(os.path.join(os.path.curdir, "./visualize", "gan"))
 
 ckpt_path = 'acgan.pt'
 save_path = './visualise'
