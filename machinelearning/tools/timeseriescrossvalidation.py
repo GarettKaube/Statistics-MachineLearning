@@ -1,15 +1,3 @@
-import numpy as np
-import pandas as pd
-from prophet import Prophet
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import mean_absolute_error
-from sklearn.metrics import mean_absolute_percentage_error
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from sklearn import feature_selection
-import pmdarima as pm
-
-
 class ARIMAModel:
     def __init__(self, **kwargs):
         print(kwargs)
@@ -19,8 +7,7 @@ class ARIMAModel:
             
             
     def train(self, train):
-        """Fits pm.ARIMA model
-        """
+        # For fitting pm.ARIMA
         y = train['y']
         if train.columns.drop(['y', 'ds']).shape[0] != 0:
             X = train.drop(['y', 'ds'], axis=1)
@@ -44,7 +31,7 @@ class ARIMAModel:
 
     
     
-class ProphetModel:
+class ProphetModel():
     def __init__(self, prophet_seasonality = False, **kwargs):
         self.model = Prophet(**kwargs)
 
@@ -67,21 +54,20 @@ class ProphetModel:
         train_predictions = self.model.predict(train.drop(['y'], axis=1)) 
         return predictions, train_predictions
 
-       
             
 class TimeSeriesCrossValidator:
-    def __init__(self, model_type:str, fold_size):
+    def __init__(self, model, fold_size):
         """
         Input:
             - model_type: str either "ARIMA", or "Prophet" is supported
             - fold_size: int indicating the size of each cross-validation fold
         """
         
-        self.arima_name = "ARIMA"
-        self.prophet_name = "Prophet"
-        assert (model_type == self.arima_name or model_type == self.prophet_name), f"""model_type must be either, {self.arima_name}, or {self.prophet_name}."""
-        self.model_type = model_type
-
+        #self.arima_name = "ARIMA"
+        #self.prophet_name = "Prophet"
+        #assert (model_type == self.arima_name or model_type == self.prophet_name), f"""model_type must be either, {self.arima_name}, or {self.prophet_name}."""
+        #self.model_type = model_type
+        self.model = model
         self.size = fold_size
         
         self.predict_naive = True if self.size == 1 else None
@@ -190,7 +176,7 @@ class TimeSeriesCrossValidator:
             - start: int index indicating the initial size of the train set
             - end: int index indicating what index to end cross-validation
         Returns:
-            - None
+            - 
         """
         n_folds = int((end-start) / self.size)
         assert n_folds > 0, "Start index must be larger than end index"
@@ -208,11 +194,8 @@ class TimeSeriesCrossValidator:
                 train = data_copy[:next_index]
                     
                 # Reset model each fold
-                if self.model_type == self.arima_name:
-                    self.model = ARIMAModel(**self.model_args)
-                elif self.model_type == self.prophet_name:
-                    self.model = ProphetModel(**self.model_args)
-
+                self.model.__init__(**self.model_args)
+                
                 if next_index + self.size <= end and i <= n_folds: # make sure index doesn't go beyond the length of end
                     test = data_copy[next_index:next_index + self.size] # new test set
 
@@ -254,23 +237,9 @@ class TimeSeriesCrossValidator:
 
         return self.mse, self.mae, self.mape, self.mse_naive, self.train_mse
     
-
-    def score(self):
-        """
-        Returns:
-            - lists of performance metrics
-            - self.mse: list
-            - self.mae: list
-            - self.mape: list
-            - self.mse_naive: list
-            - self.train_mse: list"""
-        return self.mse, self.mae, self.mape, self.mse_naive, self.train_mse
-
     
     def print_metrics(self):
         """Prints mean squared error (MSE), root MSE, pooled RMSE, mean absolute error, and mean absolute percentage error for test and train sets.
-        Returns:
-            - None
         """
         print("MSE:", np.mean(self.mse))
         print("Standard Deviation MSE:", np.std(self.mse))
