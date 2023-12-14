@@ -1,4 +1,19 @@
-class ARIMAModel:
+class Model:
+    def __init__():
+        self.model = None
+    
+    def train(self, train_df):
+        # Fit the model
+        return None
+    
+    def predict(self, train_df, test_df, size):
+        """ Return the test predictions and insample predictions
+        """
+        predictions, train_predictions = [None, None]
+        return predictions, train_predictions
+    
+    
+class ARIMAModel(Model):
     def __init__(self, **kwargs):
         print(kwargs)
         self.model = pm.ARIMA(**kwargs)
@@ -6,23 +21,23 @@ class ARIMAModel:
         print(self.model.order)
             
             
-    def train(self, train):
+    def train(self, train_df):
         # For fitting pm.ARIMA
-        y = train['y']
-        if train.columns.drop(['y', 'ds']).shape[0] != 0:
-            X = train.drop(['y', 'ds'], axis=1)
+        y = train_df['y']
+        if train_df.columns.drop(['y', 'ds']).shape[0] != 0:
+            X = train_df.drop(['y', 'ds'], axis=1)
             self.model.fit(y, X)
             print(f"Estimated AR parameters: {self.model.arparams()}")
         else:
             self.model.fit(y)
            
         
-    def predict(self, train, test, size):
-        y = train['y']
+    def predict(self, train_df, test_df, size):
+        y = train_df['y']
         # Deal with the case when we have no regressors
-        if len(train.columns.drop(['y', 'ds'])) != 0:
-            X = train.drop(['y', 'ds'], axis=1)
-            predictions = self.model.predict(X = test.drop(['y', 'ds'], axis=1), n_periods = size)
+        if len(train_df.columns.drop(['y', 'ds'])) != 0:
+            X = train_df.drop(['y', 'ds'], axis=1)
+            predictions = self.model.predict(X = test_df.drop(['y', 'ds'], axis=1), n_periods = size)
             train_predictions = self.model.predict_in_sample(X)
         else:
             predictions = self.model.predict(n_periods = size)
@@ -31,7 +46,7 @@ class ARIMAModel:
 
     
     
-class ProphetModel():
+class ProphetModel(Model):
     def __init__(self, prophet_seasonality = False, **kwargs):
         self.model = Prophet(**kwargs)
 
@@ -40,40 +55,36 @@ class ProphetModel():
             self.model.add_seasonality(name='monthly', period=30.5, fourier_order=1, prior_scale = 0.1)
             
             
-    def train(self, train):
+    def train(self, train_df):
         # add regressors to prophet 
-        for col in train.columns.drop(['y', 'ds']):
+        for col in train_df.columns.drop(['y', 'ds']):
             self.model.add_regressor(col)
                 
-        self.model.fit(train)
+        self.model.fit(train_df)
         
         
-    def predict(self, train, test):
+    def predict(self, train_df, test_df):
         # forecasts
-        predictions = self.model.predict(test.drop(['y'], axis=1)) 
-        train_predictions = self.model.predict(train.drop(['y'], axis=1)) 
+        predictions = self.model.predict(test_df.drop(['y'], axis=1)) 
+        train_predictions = self.model.predict(train_df.drop(['y'], axis=1)) 
         return predictions, train_predictions
 
             
 class TimeSeriesCrossValidator:
-    def __init__(self, model, fold_size):
+    def __init__(self, model, fold_size, **kwargs):
         """
         Input:
             - model_type: str either "ARIMA", or "Prophet" is supported
             - fold_size: int indicating the size of each cross-validation fold
         """
-        
-        #self.arima_name = "ARIMA"
-        #self.prophet_name = "Prophet"
-        #assert (model_type == self.arima_name or model_type == self.prophet_name), f"""model_type must be either, {self.arima_name}, or {self.prophet_name}."""
-        #self.model_type = model_type
+        # Model object must follow above schema
         self.model = model
         self.size = fold_size
         
         self.predict_naive = True if self.size == 1 else None
         
         # Initialize the model args to no arguments
-        self.set_model_args()
+        self.model_args = kwargs
         # Principal component analysis settings
         self.pca = False
         self.pca_n_components = None
@@ -150,7 +161,7 @@ class TimeSeriesCrossValidator:
         return train, test
     
     
-    def performance_metrics(self, actual_train, actual_test, test_predictions, train_predictions):
+    def calculate_performance_metrics(self, actual_train, actual_test, test_predictions, train_predictions):
         predict_naive = [actual_train.iloc[-1]] # Naive forecast. will only be used if fold_size = 1
         # calculate performance metrics
         try:
@@ -186,9 +197,9 @@ class TimeSeriesCrossValidator:
         print(f"Features: {data.columns.drop(['y', 'ds'])}")
         
         while continue_:
-            for i in range(n_folds+1):
+            for fold in range(n_folds+1):
                 
-                next_index = start + i*self.size # increase size of train
+                next_index = start + fold*self.size # increase size of train
                 data_copy = data.copy()
                 # new train set
                 train = data_copy[:next_index]
@@ -196,47 +207,50 @@ class TimeSeriesCrossValidator:
                 # Reset model each fold
                 self.model.__init__(**self.model_args)
                 
-                if next_index + self.size <= end and i <= n_folds: # make sure index doesn't go beyond the length of end
-                    test = data_copy[next_index:next_index + self.size] # new test set
-
-                    if self.feature_selection:
-                        train, test = self.select_features(train, test)
-
-                    # standard scaling if enabled
-                    if self.feature_scaling:
-                        train, test = self.scaling(train, test)
-
-                    # Dimension reduction
-                    if self.pca:
-                        train, test = self.dimension_reduction(train, test)
-                        
-
-                    # Train and predict
-                    self.model.train(train)
-                    try:
-                        predictions, train_predictions, = self.model.predict(train, test, self.size)
-                    except TypeError:
-                        # Prophet does not need the size of the forecasts
-                        predictions, train_predictions, = self.model.predict(train, test)
-                        
-                    
-                    # Check performance
-                    actual_test = test['y']
-                    actual_train = train['y']
-                    self.performance_metrics(actual_train, actual_test, predictions, train_predictions)
-
-
-                    if self.predict_naive and print_test_dates:
-                        print("Test date:", test['ds'].item())
-                    if print_test_dates:
-                        print("Test date(s):", test['ds'])
-                    print("Fold {} --- MSE: {} --- RMSE: {} --- MAE {} --- MAPE {}".format(i+1, self.mse[i], np.sqrt(self.mse[i]).item(), self.mae[i], self.mape[i]))
+                if next_index + self.size <= end and fold <= n_folds: # make sure index doesn't go beyond the length of end
+                    train, test = self.__cross_validation_step(train, data_copy, next_index)
+                    self.__performance(train, test, fold, print_test_dates)
 
                 else:
                     continue_ = False      
 
         return self.mse, self.mae, self.mape, self.mse_naive, self.train_mse
     
+    
+    def __cross_validation_step(self, train, df, next_index):
+        test = df[next_index:next_index + self.size] # new test set
+
+        if self.feature_selection:
+            train, test = self.select_features(train, test)
+        # standard scaling if enabled
+        if self.feature_scaling:
+            train, test = self.scaling(train, test)
+        # Dimension reduction
+        if self.pca:
+            train, test = self.dimension_reduction(train, test)
+        # Train and predict
+        self.model.train(train)
+        return train, test
+        
+        
+    def __performance(self, train, test, fold, print_test_dates):
+        try:
+            predictions, train_predictions, = self.model.predict(train, test, self.size)
+        except TypeError:
+            # Prophet does not need the size of the forecasts
+            predictions, train_predictions, = self.model.predict(train, test)
+            
+        # Check performance
+        actual_test = test['y']
+        actual_train = train['y']
+        self.calculate_performance_metrics(actual_train, actual_test, predictions, train_predictions)
+
+        if self.predict_naive and print_test_dates:
+            print("Test date:", test['ds'].item())
+        if print_test_dates:
+            print("Test date(s):", test['ds'])
+        print("Fold {} --- MSE: {} --- RMSE: {} --- MAE {} --- MAPE {}".format(fold+1, self.mse[fold], np.sqrt(self.mse[fold]).item(), self.mae[fold], self.mape[fold]))
+        
     
     def print_metrics(self):
         """Prints mean squared error (MSE), root MSE, pooled RMSE, mean absolute error, and mean absolute percentage error for test and train sets.
