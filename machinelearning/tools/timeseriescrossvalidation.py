@@ -74,7 +74,7 @@ class TimeSeriesCrossValidator:
     def __init__(self, model, fold_size, **kwargs):
         """
         Input:
-            - model_type: str either "ARIMA", or "Prophet" is supported
+            - model: Model object 
             - fold_size: int indicating the size of each cross-validation fold
         """
         # Model object must follow above schema
