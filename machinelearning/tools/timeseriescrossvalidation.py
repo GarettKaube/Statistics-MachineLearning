@@ -1,5 +1,5 @@
 class Model:
-    def __init__():
+    def __init__(self):
         self.model = None
     
     def train(self, train_df):
