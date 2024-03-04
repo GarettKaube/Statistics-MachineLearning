@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from prophet import Prophet
 from prophet.diagnostics import cross_validation
 from prophet.diagnostics import performance_metrics
 from sklearn.metrics import mean_squared_error
@@ -9,7 +8,6 @@ from sklearn.metrics import mean_absolute_percentage_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn import feature_selection
-import pmdarima as pm
 
 
 class Model:
@@ -32,7 +30,7 @@ class Model:
     
             
 class TimeSeriesCrossValidator:
-    def __init__(self, model, fold_size, **kwargs):
+    def __init__(self, model, fold_size, cv_step=1, **kwargs):
         """
         Input:
             - model_type: str either "ARIMA", or "Prophet" is supported
@@ -41,6 +39,10 @@ class TimeSeriesCrossValidator:
         # Model object must follow above schema
         self.model = model
         self.size = fold_size
+        self.cv_step = cv_step
+        
+        # Store models that are trained and tested
+        self.model_list = []
         
         self.predict_naive = True if self.size == 1 else None
         
@@ -58,7 +60,7 @@ class TimeSeriesCrossValidator:
         
         # store performance metrics
         self.train_mse = []
-        self.mse = []
+        self.mse = {}
         self.mae = []
         self.mape = []
         self.mse_naive = []
@@ -136,12 +138,12 @@ class TimeSeriesCrossValidator:
         return train, test
     
     
-    def calculate_performance_metrics(self, actual_train, actual_test, test_predictions, train_predictions):
+    def calculate_performance_metrics(self, actual_train, actual_test, test_predictions, train_predictions, dates):
         predict_naive = [actual_train.iloc[-1]] # Naive forecast. will only be used if fold_size = 1
         y_hat = test_predictions
         y_hat_train = train_predictions
-
-        self.mse.append(mean_squared_error(y_hat, actual_test))
+        
+        self.mse[str(dates[0])] = mean_squared_error(y_hat, actual_test).item()
         self.train_mse.append(mean_squared_error(y_hat_train, actual_train))
         self.mae.append(mean_absolute_error(y_hat, actual_test).item())
         self.mape.append(mean_absolute_percentage_error(y_hat, actual_test).item())
@@ -159,17 +161,18 @@ class TimeSeriesCrossValidator:
         Returns:
             - 
         """
-        n_folds = int((end-start) / self.size)
+        import math
+        n_folds = math.floor(((end-start) - self.size + self.cv_step) / self.cv_step)
         assert n_folds > 0, "Start index must be larger than end index"
         continue_ = True
         
-        print("N_folds:", self.size)
+        print("N_folds:", n_folds)
         print(f"Features: {data.columns.drop(['y', 'ds'])}")
         
         while continue_:
             for fold in range(n_folds+1):
                 
-                next_index = start + fold*self.size # increase size of train
+                next_index = start + fold*self.cv_step # increase size of train
                 data_copy = data.copy()
                 # new train set
                 train = data_copy[:next_index]
@@ -187,7 +190,7 @@ class TimeSeriesCrossValidator:
     
     def __cross_validation_step(self, train, df, next_index):
         test = df[next_index:next_index + self.size] # new test set
-
+       
         if self.feature_selection:
             train, test = self.select_features(train, test)
         # standard scaling if enabled
@@ -198,6 +201,8 @@ class TimeSeriesCrossValidator:
             train, test = self.dimension_reduction(train, test)
         # Train and predict
         self.model.train(train)
+        print(test.shape)
+        self.model_list.append(self.model.model)
         return train, test
         
         
@@ -214,27 +219,28 @@ class TimeSeriesCrossValidator:
         # Check performance
         actual_test = test['y']
         actual_train = train['y']
-        self.calculate_performance_metrics(actual_train, actual_test, predictions, train_predictions)
+        self.calculate_performance_metrics(actual_train, actual_test, predictions, train_predictions, test['ds'])
 
         if self.predict_naive and print_test_dates:
             print("Test date:", test['ds'].item())
         if print_test_dates:
             print("Test date(s):", test['ds'])
-        print("Fold {} --- MSE: {} --- RMSE: {} --- MAE {} --- MAPE {}".format(fold+1, self.mse[fold], np.sqrt(self.mse[fold]).item(), self.mae[fold], self.mape[fold]))
+        print("Fold {} --- MSE: {} --- RMSE: {} --- MAE {} --- MAPE {}".format(fold+1, list(self.mse.values())[fold], np.sqrt(list(self.mse.values())[fold]).item(), self.mae[fold], self.mape[fold]))
         
     
     def print_metrics(self):
         """Prints mean squared error (MSE), root MSE, pooled RMSE, mean absolute error, and mean absolute percentage error for test and train sets.
         """
-        print("MSE:", np.mean(self.mse))
-        print("Standard Deviation MSE:", np.std(self.mse))
+        mse = list(self.mse.values())
+        print("MSE:", np.mean(mse))
+        print("Standard Deviation MSE:", np.std(mse))
         
-        rmse = np.mean(np.sqrt(self.mse))
+        rmse = np.mean(np.sqrt(mse))
         
         print("RMSE:", rmse)
-        print("Standard Deviation RMSE:", np.std(np.sqrt(self.mse)))
+        print("Standard Deviation RMSE:", np.std(np.sqrt(mse)))
         
-        total_rmse = np.sqrt(np.mean(np.sqrt(self.mse)**2))
+        total_rmse = np.sqrt(np.mean(np.sqrt(mse)**2))
         
         print('TOTAL RMSE:', total_rmse) 
         print("MAE", np.mean(self.mae))
