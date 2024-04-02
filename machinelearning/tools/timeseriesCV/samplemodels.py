@@ -12,18 +12,19 @@ from sklearn import feature_selection
 import pmdarima as pm
 
 
+# Expected model schema for TimeSeriesCrossValidator
 class Model:
     def __init__(self):
         self.model = None
     
-    def train(self, train_df):
-        # Fit the model
+    def train(self, train_df) -> pd.Series:
+        # Fit the model and return a series of predictions
         return None
     
     def predict(self, train_df, test_df, *args):
         """ Return the test predictions and insample predictions.
         Returns:
-            - predictions: pd.Series of the forecasts.
+            - predictions: pd.Series of the forecasts for future.
             - train_predictions: pd.Series of the insample forecasts.
         """
         predictions, train_predictions = [None, None]
