@@ -107,12 +107,12 @@ class TimeSeriesCrossValidator:
             - train: pd.DataFrame containing selected columns, target, and ds column
             - test
         """
-        selection = feature_selection.SelectKBest(
+        pearson = feature_selection.SelectKBest(
             feature_selection.mutual_info_regression, 
             k=self.n_features
         )
-        selection.fit_transform(train.drop([self.target_name,'ds'], axis=1), train['y'])
-        cols = selection.get_feature_names_out()
+        pearson.fit_transform(train.drop([self.target_name,'ds'], axis=1), train['y'])
+        cols = pearson.get_feature_names_out()
         print(f"feature selection chose {cols}")
         
         train = train[list(cols)+ [self.target_name, 'ds']]
@@ -163,8 +163,12 @@ class TimeSeriesCrossValidator:
             train, test pd.DataFrames
         """
         scaler_ = StandardScaler(copy=False)
-        train.loc[:,train.columns.drop([self.target_name,'ds'])]= scaler_.fit_transform(train.drop(['y','ds'], axis=1))
-        test.loc[:, test.columns.drop([self.target_name,'ds'])]= scaler_.transform(test.drop(['y','ds'], axis=1))
+        train.loc[:,train.columns.drop([self.target_name,'ds'])] = scaler_.fit_transform(
+            train.drop(['y','ds'], axis=1)
+        )
+        test.loc[:, test.columns.drop([self.target_name,'ds'])] = scaler_.transform(
+            test.drop(['y','ds'], axis=1)
+        )
         return train, test
     
     
@@ -203,6 +207,7 @@ class TimeSeriesCrossValidator:
         print("N_folds:", n_folds)
         print(f"Features: {data.columns.drop([self.target_name, 'ds'])}")
         
+        # Run the cross-validation
         while continue_:
             for fold in range(n_folds+1):
                 # increase next_index
@@ -213,7 +218,8 @@ class TimeSeriesCrossValidator:
                 # Reset model each fold
                 self.model.__init__(**self.model_args)
                 
-                if next_index + self.size <= end and fold <= n_folds: # make sure index doesn't go beyond the length of end
+                # make sure index doesn't go beyond the length of end
+                if next_index + self.size <= end and fold <= n_folds:
                     train, test = self.__cross_validation_step(train, data_copy, next_index)
                     self.__performance(train, test, fold, print_test_dates)
                 else:
@@ -267,12 +273,18 @@ class TimeSeriesCrossValidator:
             print("Test date:", test['ds'].item())
         if print_test_dates:
             print("Test date(s):", test['ds'])
-        print("Fold {} --- MSE: {} --- RMSE: {} --- MAE {} --- MAPE {}".format(fold+1, list(self.mse.values())[fold], np.sqrt(list(self.mse.values())[fold]).item(), self.mae[fold], self.mape[fold]))
+
+        print("Fold {} --- MSE: {} --- RMSE: {} --- MAE {} --- MAPE {}".format(
+            fold+1, 
+            list(self.mse.values())[fold], 
+            np.sqrt(list(self.mse.values())[fold]).item(), 
+            self.mae[fold], 
+            self.mape[fold])
+        )
         
     
     def print_metrics(self):
-        """
-        Prints mean squared error (MSE), root MSE, pooled RMSE, mean absolute error, and mean absolute percentage error for test and train sets.
+        """Prints mean squared error (MSE), root MSE, pooled RMSE, mean absolute error, and mean absolute percentage error for test and train sets.
         """
         mse = list(self.mse.values())
         print("MSE:", np.mean(mse))
